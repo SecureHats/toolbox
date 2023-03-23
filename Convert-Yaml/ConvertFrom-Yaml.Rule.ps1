@@ -65,13 +65,49 @@ function ConvertTo-ISO8601 {
         '[hmHM]$' {
             return ('PT{0}' -f $value).ToUpper()
         }
-       '[dD]$' {
+        '[dD]$' {
             return ('P{0}' -f $value).ToUpper()
         }
         default {
             return $value.ToUpper()
         }
     }
+}
+
+function ConvertTo-ARM {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$value,
+
+        [Parameter(Mandatory = $true)]
+        [string]$outputFile
+    )
+
+    $template = [PSCustomObject]@{
+        '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
+        contentVersion = "1.0.0.0"
+        parameters     = @{
+            workspace     = @{
+                type = "string"
+            }
+            alertRuleName = @{
+                type         = "string"
+                defaultValue = "$($value.properties.displayName)"
+            }
+        }
+        resources      = @(
+            [PSCustomObject]@{
+                id         = "[format('{0}/alertRules/{1}', resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'), guid(string(parameters('alertRuleName'))))]"
+                name       = "[format('{0}/{1}/{2}', parameters('workspace'), 'Microsoft.SecurityInsights', guid(string(parameters('alertRuleName'))))]"
+                type       = "Microsoft.OperationalInsights/workspaces/providers/alertRules"
+                kind       = "Scheduled"
+                apiVersion = "2021-03-01-preview"
+                properties = $body.properties
+            }
+        )
+    }
+    
+    $template | ConvertTo-Json -Depth 20 | Out-File $outputFile -ErrorAction Stop
 }
 #EndRegion HelperFunctions
 
@@ -81,7 +117,8 @@ foreach ($rule in $analyticsRules) {
     
     try {
         $analyticsRules = Get-ChildItem -Path $FilesPath -Include "*.yaml", "*.yml" -Recurse -ErrorAction 'Stop'
-    } catch {
+    }
+    catch {
         Write-Error $_.Exception.Message
         break
     }
@@ -96,134 +133,49 @@ if ($null -ne $analyticsRules) {
             $ruleObject = get-content $rule | ConvertFrom-Yaml
 
             switch ($ruleObject.kind) {
-			"MicrosoftSecurityIncidentCreation" {  
-				$body = @{
-					"kind"       = "MicrosoftSecurityIncidentCreation"
-					"properties" = @{
-						"enabled"       = "true"
-						"productFilter" = $ruleObject.productFilter
-						"displayName"   = $ruleObject.displayName
-					}
-				}
-			}
-			"Scheduled" {
-				$body = @{
-					"kind"       = "Scheduled"
-					"properties" = @{
-						"enabled"               = $true
-						"alertRuleTemplateName" = $ruleObject.id
-						"displayName"           = $ruleObject.name
-						"description"           = $ruleObject.description
-						"severity"              = $ruleObject.severity
-						"tactics"               = $ruleObject.tactics
-                        "techniques"            = $ruleObject.relevantTechniques
-						"query"                 = $ruleObject.query
-						"queryFrequency"        = ConvertTo-ISO8601 $ruleObject.queryFrequency
-						"queryPeriod"           = ConvertTo-ISO8601 $ruleObject.queryPeriod
-						"triggerOperator"       = Convert-TriggerOperator $ruleObject.triggerOperator
-						"triggerThreshold"      = $ruleObject.triggerThreshold
-						"suppressionDuration"   = "PT5H"  #Azure Sentinel requires a value here, although suppression is disabled
-						"suppressionEnabled"    = $false
-                        "entityMappings"        = $ruleObject.entityMappings
-					}
-				}
-			
-                $template = [PSCustomObject]@{
-                    '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
-                    contentVersion = "1.0.0.0"
-                    parameters     = @{
-                        workspace = @{
-                            type = "string"
-                        }
-                        alertRuleName = @{
-                            type = "string"
-                            defaultValue = "$($body.properties.displayName)"
+                "MicrosoftSecurityIncidentCreation" {  
+                    $body = @{
+                        "kind"       = "MicrosoftSecurityIncidentCreation"
+                        "properties" = @{
+                            "enabled"       = "true"
+                            "productFilter" = $ruleObject.productFilter
+                            "displayName"   = $ruleObject.displayName
                         }
                     }
-                    resources      = @(
-                        [PSCustomObject]@{
-                            id         = "[format('{0}/alertRules/{1}', resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'), guid(string(parameters('alertRuleName'))))]"
-                            name       = "[format('{0}/{1}/{2}', parameters('workspace'), 'Microsoft.SecurityInsights', guid(string(parameters('alertRuleName'))))]"
-                            type       = "Microsoft.OperationalInsights/workspaces/providers/alertRules"
-                            kind       = "Scheduled"
-                            apiVersion = "2021-03-01-preview"
-                            properties = $body.properties
-                        }
-                    )
                 }
+                "Scheduled" {
+                    $body = @{
+                        "kind"       = "Scheduled"
+                        "properties" = @{
+                            "enabled"               = $true
+                            "alertRuleTemplateName" = $ruleObject.id
+                            "displayName"           = $ruleObject.name
+                            "description"           = $ruleObject.description
+                            "severity"              = $ruleObject.severity
+                            "tactics"               = $ruleObject.tactics
+                            "techniques"            = $ruleObject.relevantTechniques
+                            "query"                 = $ruleObject.query
+                            "queryFrequency"        = ConvertTo-ISO8601 $ruleObject.queryFrequency
+                            "queryPeriod"           = ConvertTo-ISO8601 $ruleObject.queryPeriod
+                            "triggerOperator"       = Convert-TriggerOperator $ruleObject.triggerOperator
+                            "triggerThreshold"      = $ruleObject.triggerThreshold
+                            "suppressionDuration"   = "PT5H"  #Azure Sentinel requires a value here, although suppression is disabled
+                            "suppressionEnabled"    = $false
+                            "entityMappings"        = $ruleObject.entityMappings
+                        }
+                    }
+                    if ($null -ne $ruleObject.incidentConfiguration) {
+                        $body.properties.incidentConfiguration = $ruleObject.incidentConfiguration
+                    }
+                }
+                Default { }
             }
-			Default { }
-            }
-        } catch {
+        }
+        catch {
             Write-Error $_.Exception.Message
             break
         }
-    }
-}
-
-
-    <#
-        If OutPut folder defined then test if exists otherwise create folder
-    #>
-
-    <#
-
-    <#
-        If any YAML file found starte lopp to process all the files
-    #>
-    if ($content) {
-        Write-Verbose "'$($content.count)' templates found to convert"
-
-        # Start Loop
-        $content | ForEach-Object {
-            <#
-                Define JSON template format
-            #>
-            $template = [PSCustomObject]@{
-                '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
-                contentVersion = "1.0.0.0"
-                Parameters     = @{
-                    Workspace = @{
-                        type = "string"
-                    }
-                }
-                resources      = @(
-                    [PSCustomObject]@{
-                        id         = ""
-                        name       = ""
-                        type       = "Microsoft.OperationalInsights/workspaces/providers/alertRules"
-                        kind       = "Scheduled"
-                        apiVersion = "2021-03-01-preview"
-                        properties = [PSCustomObject]@{}
-                    }
-                )
-            }
-
-            # Update the template format with the data from YAML file
-            $convert = $_ | Get-Content -Raw | ConvertFrom-Yaml -ErrorAction Stop | Select-Object * -ExcludeProperty relevantTechniques, kind, requiredDataConnectors, version, tags
-            $($template.resources).id = "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/" + $convert.id + "')]"
-            $($template.resources).name = "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/" + $convert.id + "')]"
-            $($template.resources).properties = ($convert | Select-Object * -ExcludeProperty id)
-
-            #Based of output path variable export files to the right folder
-            if ($null -ne $expPath) {
-                $outputFile = $expPath + "/" + $($_.BaseName) + ".json"
-            }
-            else {
-
-                $outputFile = $($_.DirectoryName) + "/" + $($_.BaseName) + ".json"
-            }
-
-            #Export to JSON
-            try {
-                $template | ConvertTo-Json -Depth 20 | Out-File $outputFile -ErrorAction Stop
-            }
-            catch {
-                Write-Error $_.Exception.Message
-            }
-        }
-    }
-    else {
-        Write-Warning "No YAML templates found"
+    
+        ConvertTo-ARM -value $body -outputFile ($($rule.DirectoryName) + "/" + $($rule.BaseName) + ".json")
     }
 }
