@@ -38,18 +38,7 @@ $modulesToInstall | ForEach-Object {
     }
 }
 
-# Fetching Alert Rule templates
-
-foreach ($rule in $analyticsRules) {
-    
-    try {
-        $analyticsRules = Get-ChildItem -Path $FilesPath -Include "*.yaml", "*.yml" -Recurse -ErrorAction 'Stop'
-    } catch {
-        Write-Error $_.Exception.Message
-        break
-    }
-}
-
+#Region HelperFunctions
 function Convert-TriggerOperator {
     param (
         [Parameter(Mandatory = $true)]
@@ -84,6 +73,19 @@ function ConvertTo-ISO8601 {
         }
     }
 }
+#EndRegion HelperFunctions
+
+# Fetching Alert Rule templates
+
+foreach ($rule in $analyticsRules) {
+    
+    try {
+        $analyticsRules = Get-ChildItem -Path $FilesPath -Include "*.yaml", "*.yml" -Recurse -ErrorAction 'Stop'
+    } catch {
+        Write-Error $_.Exception.Message
+        break
+    }
+}
 
 # Processing Alert Rule templates
 
@@ -108,9 +110,9 @@ if ($null -ne $analyticsRules) {
 				$body = @{
 					"kind"       = "Scheduled"
 					"properties" = @{
-						"enabled"               = "true"
+						"enabled"               = $true
 						"alertRuleTemplateName" = $ruleObject.id
-						"displayName"           = $ruleObject.displayName
+						"displayName"           = $ruleObject.name
 						"description"           = $ruleObject.description
 						"severity"              = $ruleObject.severity
 						"tactics"               = $ruleObject.tactics
@@ -122,9 +124,34 @@ if ($null -ne $analyticsRules) {
 						"triggerThreshold"      = $ruleObject.triggerThreshold
 						"suppressionDuration"   = "PT5H"  #Azure Sentinel requires a value here, although suppression is disabled
 						"suppressionEnabled"    = $false
+                        "entityMappings"        = $ruleObject.entityMappings
 					}
 				}
-			}
+			
+                $template = [PSCustomObject]@{
+                    '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
+                    contentVersion = "1.0.0.0"
+                    parameters     = @{
+                        workspace = @{
+                            type = "string"
+                        }
+                        alertRuleName = @{
+                            type = "string"
+                            defaultValue = "$($body.properties.displayName)"
+                        }
+                    }
+                    resources      = @(
+                        [PSCustomObject]@{
+                            id         = "[format('{0}/alertRules/{1}', resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'), guid(string(parameters('alertRuleName'))))]"
+                            name       = "[format('{0}/{1}/{2}', parameters('workspace'), 'Microsoft.SecurityInsights', guid(string(parameters('alertRuleName'))))]"
+                            type       = "Microsoft.OperationalInsights/workspaces/providers/alertRules"
+                            kind       = "Scheduled"
+                            apiVersion = "2021-03-01-preview"
+                            properties = $body.properties
+                        }
+                    )
+                }
+            }
 			Default { }
             }
         } catch {
