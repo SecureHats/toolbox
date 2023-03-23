@@ -1,18 +1,20 @@
 <#
     .SYNOPSIS
-        This command creates Sentinel Alert Rules from all available alert rule templates for which data connectors are configured.
+        This command creates ARM templates from Yaml Alert Rules from all available alert rule templates.
     .DESCRIPTION
-        This command creates Sentinel Alert Rules from all available alert rule templates for which data connectors are configured.
+        This command creates ARM templates from Yaml Alert Rules templates.
     .PARAMETER WorkSpaceName
         Enter the Log Analytics workspace name (required)
-    .PARAMETER ResourceGroupName
-        Enter the Resource Group name of Log Analytics workspace (required)
+    .PARAMETER FilesPath
+        Enter the Path to the source files (required)
+    .PARAMETER OutputPath
+        Enter the Path for the destination files (required)
     .NOTES
         AUTHOR: Rogier Dijkman (azurekid)
         LASTEDIT: 23 Mrt 2023
     .EXAMPLE
         ConvertFrom-YamlRule -FilesPath "c:\templates" -OutputPath "c:\export"
-        The script will create Azure Sentinel Alert Rules in Workspace "workspacename"      
+        The script will create ARM templates for Azure Sentinel Alert Rules.      
 #>
 
 [CmdletBinding()]
