@@ -8,10 +8,10 @@
     .PARAMETER ResourceGroupName
         Enter the Resource Group name of Log Analytics workspace (required)
     .NOTES
-        AUTHOR: Tobias Kritten
-        LASTEDIT: 14 Feb 2021
+        AUTHOR: Rogier Dijkman (azurekid)
+        LASTEDIT: 23 Mrt 2023
     .EXAMPLE
-        Create-AzSentinelAnalyticsRulesFromTemplates -WorkspaceName "workspacename" -ResourceGroupName "rgname"
+        ConvertFrom-YamlRule -FilesPath "c:\templates" -OutputPath "c:\export"
         The script will create Azure Sentinel Alert Rules in Workspace "workspacename"      
 #>
 
