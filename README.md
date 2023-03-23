@@ -32,3 +32,7 @@ _italic_
 inline `code-example` 
 
  -->
+
+## Issues?
+
+[Create Issue](https://github.com/SecureHats/toolbox/issues)
