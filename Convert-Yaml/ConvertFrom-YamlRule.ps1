@@ -1,20 +1,18 @@
 <#
     .SYNOPSIS
-        This command creates ARM templates from Yaml Alert Rules from all available alert rule templates.
+        This command creates Sentinel Alert Rules from all available alert rule templates for which data connectors are configured.
     .DESCRIPTION
-        This command creates ARM templates from Yaml Alert Rules templates.
+        This command creates Sentinel Alert Rules from all available alert rule templates for which data connectors are configured.
     .PARAMETER WorkSpaceName
         Enter the Log Analytics workspace name (required)
-    .PARAMETER FilesPath
-        Enter the Path to the source files (required)
-    .PARAMETER OutputPath
-        Enter the Path for the destination files (required)
+    .PARAMETER ResourceGroupName
+        Enter the Resource Group name of Log Analytics workspace (required)
     .NOTES
-        AUTHOR: Rogier Dijkman (azurekid)
-        LASTEDIT: 23 Mrt 2023
+        AUTHOR: Tobias Kritten
+        LASTEDIT: 14 Feb 2021
     .EXAMPLE
-        ConvertFrom-YamlRule -FilesPath "c:\templates" -OutputPath "c:\export"
-        The script will create ARM templates for Azure Sentinel Alert Rules.      
+        Create-AzSentinelAnalyticsRulesFromTemplates -WorkspaceName "workspacename" -ResourceGroupName "rgname"
+        The script will create Azure Sentinel Alert Rules in Workspace "workspacename"      
 #>
 
 [CmdletBinding()]
@@ -85,20 +83,20 @@ function ConvertTo-ARM {
         [string]$outputFile
     )
 
-    $template = [PSCustomObject]@{
+    $template = [pscustomobject]@{
         '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
         contentVersion = "1.0.0.0"
         parameters     = @{
             workspace     = @{
                 type = "string"
             }
-            alertRuleName = @{
+            alertRuleName = [pscustomobject]@{
                 type         = "string"
                 defaultValue = "$($value.properties.displayName)"
             }
         }
         resources      = @(
-            [PSCustomObject]@{
+            [pscustomobject]@{
                 id         = "[format('{0}/alertRules/{1}', resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'), guid(string(parameters('alertRuleName'))))]"
                 name       = "[format('{0}/{1}/{2}', parameters('workspace'), 'Microsoft.SecurityInsights', guid(string(parameters('alertRuleName'))))]"
                 type       = "Microsoft.OperationalInsights/workspaces/providers/alertRules"
@@ -116,7 +114,7 @@ function ConvertTo-ARM {
 # Fetching Alert Rule templates
 
 foreach ($rule in $analyticsRules) {
-    
+
     try {
         $analyticsRules = Get-ChildItem -Path $FilesPath -Include "*.yaml", "*.yml" -Recurse -ErrorAction 'Stop'
     }
@@ -129,7 +127,6 @@ foreach ($rule in $analyticsRules) {
 # Processing Alert Rule templates
 
 if ($null -ne $analyticsRules) {
-    Write-Verbose "found $($analyticsRules.count) to process"
     foreach ($rule in $analyticsRules) {
         try {
             $ruleObject = get-content $rule | ConvertFrom-Yaml
@@ -146,29 +143,39 @@ if ($null -ne $analyticsRules) {
                     }
                 }
                 "Scheduled" {
-                    $body = @{
+                    $body = [pscustomobject]@{
                         "kind"       = "Scheduled"
                         "properties" = @{
-                            "enabled"               = $true
-                            "alertRuleTemplateName" = $ruleObject.id
-                            "displayName"           = $ruleObject.name
-                            "description"           = $ruleObject.description
-                            "severity"              = $ruleObject.severity
-                            "tactics"               = $ruleObject.tactics
-                            "techniques"            = $ruleObject.relevantTechniques
-                            "query"                 = $ruleObject.query
-                            "queryFrequency"        = ConvertTo-ISO8601 $ruleObject.queryFrequency
-                            "queryPeriod"           = ConvertTo-ISO8601 $ruleObject.queryPeriod
-                            "triggerOperator"       = Convert-TriggerOperator $ruleObject.triggerOperator
-                            "triggerThreshold"      = $ruleObject.triggerThreshold
-                            "suppressionDuration"   = "PT5H"  #Azure Sentinel requires a value here, although suppression is disabled
-                            "suppressionEnabled"    = $false
-                            "entityMappings"        = $ruleObject.entityMappings
+                            "displayName"              = $ruleObject.name
+                            "description"              = $ruleObject.description
+                            "severity"                 = $ruleObject.severity
+                            "enabled"                  = $true
+                            "query"                    = $ruleObject.query
+                            "queryFrequency"           = ConvertTo-ISO8601 $ruleObject.queryFrequency
+                            "queryPeriod"              = ConvertTo-ISO8601 $ruleObject.queryPeriod
+                            "triggerOperator"          = Convert-TriggerOperator $ruleObject.triggerOperator
+                            "triggerThreshold"         = $ruleObject.triggerThreshold
+                            "suppressionDuration"      = "PT5H"  #Azure Sentinel requires a value here, although suppression is disabled
+                            "suppressionEnabled"       = $false
+                            "tactics"                  = $ruleObject.tactics
+                            "techniques"               = $ruleObject.relevantTechniques
+                            "alertRuleTemplateName"    = $ruleObject.id
+                            "entityMappings"           = $ruleObject.entityMappings
+                            "incidentConfiguration"    = $ruleObject.incidentConfiguration
+                            "sentinelEntitiesMappings" = $ruleObject.sentinelEntitiesMappings
+                            "eventGroupingSettings"    = $ruleObject.eventGroupingSettings
+                            "templateVersion"          = $ruleObject.version
                         }
                     }
+                    
+                    # Update duration to ISO8601
                     if ($null -ne $ruleObject.incidentConfiguration) {
-                        $body.properties.incidentConfiguration = $ruleObject.incidentConfiguration
+                        $body.properties.incidentConfiguration.groupingConfiguration.lookbackDuration = ConvertTo-ISO8601 $ruleObject.incidentConfiguration.groupingConfiguration.lookbackDuration
                     }
+
+                    # if ($null -ne $ruleObject.eventGroupingSettings) {
+                    #     $body.properties.eventGroupingSettings = $ruleObject.eventGroupingSettings
+                    # }
                 }
                 Default { }
             }
@@ -178,6 +185,6 @@ if ($null -ne $analyticsRules) {
             break
         }
     
-        ConvertTo-ARM -value $body -outputFile ($($rule.DirectoryName) + "/" + $($rule.BaseName) + ".json")
+        ConvertTo-ARM -value $body -outputFile ('{0}/{1}.json' -f ($($rule.DirectoryName), $($rule.BaseName)))
     }
 }
