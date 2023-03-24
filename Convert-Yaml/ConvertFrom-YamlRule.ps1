@@ -26,7 +26,6 @@ param (
 )
 
 #Region Install Modules
-## Make sure any modules we depend on are installed
 $modulesToInstall = @(
     'powershell-yaml'
 )
