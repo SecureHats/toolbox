@@ -25,6 +25,7 @@ param (
     
 )
 
+#Region Install Modules
 ## Make sure any modules we depend on are installed
 $modulesToInstall = @(
     'powershell-yaml'
@@ -37,6 +38,7 @@ $modulesToInstall | ForEach-Object {
         Import-Module $_ -Force
     }
 }
+#EndRegion Install Modules
 
 #Region HelperFunctions
 function Convert-TriggerOperator {
@@ -111,8 +113,7 @@ function ConvertTo-ARM {
 }
 #EndRegion HelperFunctions
 
-# Fetching Alert Rule templates
-
+#Region Fetching AlertRules
 foreach ($rule in $analyticsRules) {
 
     try {
@@ -123,9 +124,9 @@ foreach ($rule in $analyticsRules) {
         break
     }
 }
+#EndRegion Fetching AlertRules
 
-# Processing Alert Rule templates
-
+#Region Processing AlertRules
 if ($null -ne $analyticsRules) {
     foreach ($rule in $analyticsRules) {
         try {
@@ -172,10 +173,6 @@ if ($null -ne $analyticsRules) {
                     if ($null -ne $ruleObject.incidentConfiguration) {
                         $body.properties.incidentConfiguration.groupingConfiguration.lookbackDuration = ConvertTo-ISO8601 $ruleObject.incidentConfiguration.groupingConfiguration.lookbackDuration
                     }
-
-                    # if ($null -ne $ruleObject.eventGroupingSettings) {
-                    #     $body.properties.eventGroupingSettings = $ruleObject.eventGroupingSettings
-                    # }
                 }
                 Default { }
             }
@@ -184,7 +181,7 @@ if ($null -ne $analyticsRules) {
             Write-Error $_.Exception.Message
             break
         }
-    
         ConvertTo-ARM -value $body -outputFile ('{0}/{1}.json' -f ($($rule.DirectoryName), $($rule.BaseName)))
     }
 }
+#EndRegion Processing AlertRules
