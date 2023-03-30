@@ -33,8 +33,8 @@ inline `code-example`
 
  -->
 
-## Not happy with the result?
+## Not happy?
 
 If you encounter any issues, or hae suggestions for improvements, feel free to open an Issue
 
-[Create Issue](https://github.com/SecureHats/toolbox/issues)
+[Create Issue](../../issues/new/choose)
